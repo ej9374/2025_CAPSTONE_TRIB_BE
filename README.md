@@ -1,4 +1,6 @@
 # ✈️ TriB: AI 올인원 여행 매니저
+<img width="914" height="515" alt="image" src="https://github.com/user-attachments/assets/da040efe-8479-4dbc-b238-41360ab04160" />
+
 > **Project Period:** 2025.09 ~ (In Progress 🚧)
 
 ![In Progress](https://img.shields.io/badge/Status-In%20Progress-yellow)
