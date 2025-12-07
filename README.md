@@ -23,23 +23,25 @@
 ## 🛠️ Tech Stack
 - **Backend:** Java, Spring Boot, JPA
 - **Database:** MySQL 8.0, Redis
-- **Infra:** AWS EC2, Docker, GitHub Actions
+- **Infra:** AWS EC2, Docker, GitHub Actions, FCM(Firebase Cloud Messaging)
 - **AI:** FastAPI (Python), Google Gemini API
 
 ## ✅ 주요 기능 (Key Features)
 
 ### 🔐 인증 & 사용자 (Auth)
 - **간편 로그인:** 카카오, 구글 계정을 연동한 소셜 로그인 (OAuth 2.0)
+- **이메일 인증:** Redis를 통한 SMTP 기반의 이메일 인증 프로세스
 - **보안 로그인:** JWT 토큰 기반 인증 및 자동 로그인 유지
 - **프로필 관리:** 닉네임, 프로필 사진 변경 및 마이페이지
 
 ### 💬 친구 & 채팅 (Social & Chat)
 - **친구 관리:** 닉네임 검색을 통한 친구 추가 및 차단
-- **실시간 채팅:** 1:1 및 그룹 채팅방 생성, 실시간 메시지 전송 (WebSocket)
+- **실시간 채팅:** 1:1 및 그룹 채팅방 생성, WebSocket 기반의 실시간 메시지 전송 및 FCM 기반 푸시 알림
 - **채팅방 관리:** 여행 멤버 초대, 채팅방 나가기
 
 ### ✈️ 여행 & 지도 (Travel & Map)
 - **AI 일정 생성:** 채팅방 대화 내용을 분석하여 여행 코스 자동 추천
+- **비동기 알림 처리:** 생성 시간이 소요되는 AI 작업 완료 시, 사용자를 호출하는 시스템 알림(Push Notification) 발송
 - **일정 관리:** 날짜별 여행 동선 시각화 및 세부 일정 수정
 - **길찾기:** 지도 API를 활용한 장소 간 이동 경로 및 소요 시간 제공
 
