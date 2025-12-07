@@ -29,13 +29,14 @@ public class PostSummaryResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private String coverImageUrl;  // 첫 번째 이미지
+    private List<String> imageUrls;  // 모든 이미지 URL 리스트
 
     private Integer likesCount;
     private Integer commentsCount;
     private List<HashtagResponse> hashtags;
 
     public static PostSummaryResponse from(Post post, User author, Trip trip,
-                                          String coverImageUrl, List<Hashtag> hashtags) {
+                                          String coverImageUrl, List<String> imageUrls, List<Hashtag> hashtags) {
         return PostSummaryResponse.builder()
             .postId(post.getPostId())
             .postType(post.getPostType())
@@ -46,6 +47,7 @@ public class PostSummaryResponse {
             .startDate(trip != null && trip.getRoom() != null ? trip.getRoom().getStartDate() : null)
             .endDate(trip != null && trip.getRoom() != null ? trip.getRoom().getEndDate() : null)
             .coverImageUrl(coverImageUrl)
+            .imageUrls(imageUrls)
             .likesCount(post.getLikesCount())
             .commentsCount(post.getCommentsCount())
             .hashtags(hashtags.stream().map(HashtagResponse::from).collect(Collectors.toList()))

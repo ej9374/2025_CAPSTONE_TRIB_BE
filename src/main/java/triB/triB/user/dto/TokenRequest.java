@@ -4,6 +4,5 @@ import lombok.Getter;
 
 @Getter
 public class TokenRequest {
-    private String deviceId;
     private String token;
 }

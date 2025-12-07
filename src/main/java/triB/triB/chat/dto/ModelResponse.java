@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 import triB.triB.chat.entity.PlaceTag;
+import triB.triB.schedule.entity.TravelMode;
 
 import java.util.List;
 
@@ -16,6 +17,8 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ModelResponse {
     private Integer budget;
+    private TravelMode travelMode;
+    private String accommodationCostInfo;
     private List<Itinerary> itinerary;
 
     @Getter
@@ -40,5 +43,7 @@ public class ModelResponse {
         private String arrival;
         private String departure;
         private Integer travelTime;
+        private Integer estimatedCost;
+        private String costExplanation;
     }
 }

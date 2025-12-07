@@ -51,6 +51,17 @@ public class Post {
     @JoinColumn(name = "trip_id", insertable = false, updatable = false)
     private Trip trip;
 
+    // TRIP_SHARE 전용 평가 필드
+    @Column(name = "matches_preferences")
+    private Boolean matchesPreferences;
+
+    @Column(name = "is_practical")
+    private Boolean isPractical;
+
+    @Lob
+    @Column(name = "travel_review", columnDefinition = "TEXT")
+    private String travelReview;
+
     @Column(name = "title")
     private String title;
 

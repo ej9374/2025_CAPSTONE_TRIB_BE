@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import triB.triB.community.entity.Post;
 import triB.triB.community.entity.PostType;
+import triB.triB.schedule.entity.Trip;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,8 +36,14 @@ public interface PostRepository extends JpaRepository<Post, Long>, PostRepositor
      * 특정 시간 이후 작성된 게시글 중 좋아요 + 댓글 수가 가장 많은 1개 반환
      */
     @Query("SELECT p FROM Post p WHERE p.postType = :postType AND p.createdAt > :date " +
-           "ORDER BY (p.likesCount + p.commentsCount) DESC, p.createdAt DESC")
+            "ORDER BY (p.likesCount + p.commentsCount) DESC, p.createdAt DESC")
     Post findTopByPostTypeAndCreatedAtAfterOrderByLikesCountDescCommentsCountDesc(
             @Param("postType") PostType postType,
             @Param("date") LocalDateTime date);
+
+    @Query("select p.title from Post p where p.postId = :postId")
+    String findTitleByPostId(@Param("postId") Long postId);
+
+    @Query("select p from Post p left join fetch p.trip t left join fetch t.room join fetch p.user where p.userId = :userId and p.postType = :postType order by p.postId desc")
+    List<Post> findByUser_UserIdAndPostTypeOrderByPostIdDesc(@Param("userId") Long userId, @Param("postType") PostType postType);
 }

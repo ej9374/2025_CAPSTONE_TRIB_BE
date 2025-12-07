@@ -107,4 +107,22 @@ public class RoomController {
         List<UserResponse> response = roomService.getUsersInRoom(userId, roomId);
         return ApiResponse.ok("채팅방의 유저 프로필을 불러왔습니다.", response);
     }
+
+    @GetMapping("/info")
+    public ResponseEntity<ApiResponse<RoomInfoResponse>> getRoomInfo(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @RequestParam(name = "roomId") Long roomId
+    ){
+        RoomInfoResponse response = roomService.getRoomInfo(roomId);
+        return ApiResponse.ok("해당 채팅방 정보를 조회했습니다.", response);
+    }
+
+    @GetMapping("/edit/info")
+    public ResponseEntity<ApiResponse<RoomInfoResponse>> getRoomInfoByEdit(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @RequestParam(name = "roomId") Long roomId
+    ){
+        RoomInfoResponse response = roomService.getRoomInfoByEdit(roomId);
+        return ApiResponse.ok("해당 채팅방 정보를 조회했습니다.", response);
+    }
 }

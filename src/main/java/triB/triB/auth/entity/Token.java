@@ -20,12 +20,9 @@ public class Token {
     @Column(name = "token_id")
     private Long tokenId;
 
-    @JoinColumn(name = "user_id", nullable = false)
-    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @OneToOne
     private User user;
-
-    @Column(name = "device_id", nullable = false)
-    private String deviceId;
 
     @Column(name = "token", nullable = false)
     private String token;

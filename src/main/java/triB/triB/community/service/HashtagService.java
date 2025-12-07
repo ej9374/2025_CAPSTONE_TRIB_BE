@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -23,6 +24,7 @@ import triB.triB.schedule.repository.ScheduleRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -52,7 +54,7 @@ public class HashtagService {
      * @param trip 여행 정보 (목적지, 기간 포함)
      * @return 생성된 해시태그 리스트
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<Hashtag> generateHashtagsForTripShare(Trip trip) {
         try {
             // 1. 여행 일정 조회
@@ -204,8 +206,22 @@ public class HashtagService {
                 })
                 .block(); // 동기 방식으로 결과 대기
 
+        // null 체크
+        if (generatedText == null || generatedText.isEmpty()) {
+            log.error("Gemini API 응답이 비어있습니다.");
+            throw new RuntimeException("Gemini API 응답이 비어있습니다.");
+        }
+
         // 4. 해시태그 파싱
-        return parseHashtagsFromText(generatedText);
+        List<String> parsedTags = parseHashtagsFromText(generatedText);
+
+        // 빈 리스트 체크
+        if (parsedTags.isEmpty()) {
+            log.error("파싱된 해시태그가 없습니다. 원본 텍스트: {}", generatedText);
+            throw new RuntimeException("해시태그 파싱 결과가 비어있습니다.");
+        }
+
+        return parsedTags;
     }
 
     /**
@@ -228,34 +244,46 @@ public class HashtagService {
      * 해시태그 findOrCreate 패턴
      * 이미 존재하는 해시태그는 재사용하고, 없으면 새로 생성
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<Hashtag> getOrCreateHashtags(List<String> tagNames, TagType tagType) {
         List<Hashtag> hashtags = new ArrayList<>();
 
         for (String tagName : tagNames) {
-            Hashtag hashtag = hashtagRepository.findByTagName(tagName)
-                    .orElseGet(() -> {
-                        // 새로운 해시태그 생성
-                        Hashtag newTag = Hashtag.builder()
-                                .tagName(tagName)
-                                .tagType(tagType)
-                                .build();
-
-                        try {
-                            return hashtagRepository.save(newTag);
-                        } catch (Exception e) {
-                            // Unique constraint 위반 시 (동시성 이슈)
-                            // 다시 조회 시도
-                            log.warn("해시태그 저장 중 중복 발생, 재조회: {}", tagName);
-                            return hashtagRepository.findByTagName(tagName)
-                                    .orElseThrow(() -> new RuntimeException("해시태그 생성 실패: " + tagName));
-                        }
-                    });
-
+            Hashtag hashtag = findOrCreateHashtag(tagName, tagType);
             hashtags.add(hashtag);
         }
 
         return hashtags;
+    }
+
+    /**
+     * 단일 해시태그 findOrCreate
+     * 먼저 조회하고, 없을 때만 저장
+     */
+    private Hashtag findOrCreateHashtag(String tagName, TagType tagType) {
+        // 1. 먼저 DB에서 조회
+        Optional<Hashtag> existing = hashtagRepository.findByTagName(tagName);
+        if (existing.isPresent()) {
+            log.debug("기존 해시태그 사용: {}", tagName);
+            return existing.get();
+        }
+
+        // 2. 없으면 새로 생성하여 저장
+        try {
+            Hashtag newTag = Hashtag.builder()
+                    .tagName(tagName)
+                    .tagType(tagType)
+                    .build();
+
+            log.debug("새 해시태그 저장: {}", tagName);
+            return hashtagRepository.save(newTag);
+
+        } catch (Exception e) {
+            // 동시성 이슈로 다른 트랜잭션이 먼저 저장한 경우, 다시 조회
+            log.warn("해시태그 저장 중 중복 발생, 재조회: {} - {}", tagName, e.getMessage());
+            return hashtagRepository.findByTagName(tagName)
+                    .orElseThrow(() -> new RuntimeException("해시태그 생성 실패: " + tagName, e));
+        }
     }
 
     /**

@@ -39,6 +39,9 @@ public class OauthAccount {
     @Column(name = "provider_user_id", nullable = false)
     private String providerUserId;
 
+    @Column(name = "refresh_token", nullable = true)
+    private String refreshToken;
+
     @Column(name = "created_at", nullable = false)
     @CreationTimestamp
     private LocalDateTime createdAt;

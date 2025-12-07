@@ -60,4 +60,10 @@ public class Schedule {
 
     @Column(name = "travel_time", nullable = true)
     private String travelTime;
+
+    @Column(name = "estimated_cost", nullable = true)
+    private Integer estimatedCost;
+
+    @Column(name = "cost_explanation", nullable = true)
+    private String costExplanation;
 }

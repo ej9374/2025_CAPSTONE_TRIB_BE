@@ -12,9 +12,6 @@ import java.util.List;
 @Repository
 public interface MessagePlaceRepository extends JpaRepository<MessagePlace, Long> {
 
-    @Query("select mp.placeTag from MessagePlace mp where mp.message.messageId = :messageId")
-    PlaceTag findPlaceTagByMessage_MessageId(@Param("messageId") Long messageId);
-
     MessagePlace findByMessage_MessageId(@Param("messageId") Long messageId);
 
     @Query("select mp from MessagePlace mp where mp.room.roomId = :roomId order by mp.messagePlaceId desc")
@@ -22,4 +19,8 @@ public interface MessagePlaceRepository extends JpaRepository<MessagePlace, Long
 
     @Query("select mp from MessagePlace mp where mp.room.roomId = :roomId order by mp.messagePlaceId desc limit 5")
     List<MessagePlace> findByRoom_RoomIdLatest(Long roomId);
+
+    // 배치조회로 메세지 리스트에서 빠르게 조회
+    @Query("select mp from MessagePlace mp where mp.message.messageId in :messageIds")
+    List<MessagePlace> findByMessageIds(@Param("messageIds") List<Long> messageIds);
 }

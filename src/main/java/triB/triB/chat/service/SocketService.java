@@ -4,33 +4,36 @@ import com.google.firebase.messaging.FirebaseMessagingException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import triB.triB.auth.entity.IsAlarm;
-import triB.triB.auth.entity.Token;
 import triB.triB.auth.entity.User;
 import triB.triB.auth.repository.TokenRepository;
 import triB.triB.auth.repository.UserRepository;
-import triB.triB.chat.dto.ActionType;
-import triB.triB.chat.dto.MessageDto;
-import triB.triB.chat.dto.MessageResponse;
-import triB.triB.chat.dto.PlaceDetail;
+import triB.triB.chat.dto.*;
 import triB.triB.chat.entity.*;
+import triB.triB.chat.event.ChatMessageCreatedEvent;
 import triB.triB.chat.repository.MessageBookmarkRepository;
 import triB.triB.chat.repository.MessagePlaceDetailRepository;
 import triB.triB.chat.repository.MessagePlaceRepository;
 import triB.triB.chat.repository.MessageRepository;
+import triB.triB.community.entity.Post;
+import triB.triB.community.repository.PostImageRepository;
+import triB.triB.community.repository.PostRepository;
 import triB.triB.friendship.dto.UserResponse;
-import triB.triB.global.fcm.FcmSendRequest;
-import triB.triB.global.fcm.FcmSender;
-import triB.triB.global.fcm.RequestType;
+import triB.triB.global.exception.CustomException;
+import triB.triB.global.exception.ErrorCode;
 import triB.triB.room.entity.Room;
+import triB.triB.room.entity.RoomReadState;
+import triB.triB.room.entity.RoomReadStateId;
 import triB.triB.room.entity.UserRoom;
+import triB.triB.room.repository.RoomReadStateRepository;
 import triB.triB.room.repository.RoomRepository;
 import triB.triB.room.repository.UserRoomRepository;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -44,12 +47,15 @@ public class SocketService {
     private final MessageBookmarkRepository messageBookmarkRepository;
     private final MessagePlaceRepository messagePlaceRepository;
     private final MessagePlaceDetailRepository messagePlaceDetailRepository;
-    private final TokenRepository tokenRepository;
-    private final FcmSender fcmSender;
+    private final RoomReadStateRepository roomReadStateRepository;
+    private final PostRepository postRepository;
+    private final ApplicationEventPublisher publisher;
+    private final PostImageRepository postImageRepository;
+
 
     // 메세지 전송
     @Transactional
-    public MessageResponse sendMessageToRoom(Long userId, Long roomId, String content) throws FirebaseMessagingException {
+    public MessageResponse sendMessageToRoom(Long userId, Long roomId, String content){
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
 
@@ -65,8 +71,9 @@ public class SocketService {
                 .build();
         messageRepository.save(message);
 
-        sendMessagePushNotification(roomId, message);
-        // todo 확인해야할점: 지금 이 채팅방을 구독하고 있는 사람들에게는 메세지를 보낼필요가없음. 이 방안에 들어있지만 안 구독하고있는 사람에게 알림을 보내야됨
+        publisher.publishEvent(new ChatMessageCreatedEvent(
+                roomId, userId, user.getNickname(), user.getPhotoUrl(), message.getContent(), message.getMessageType()
+        ));
 
         return MessageResponse.builder()
                 .actionType(ActionType.NEW_MESSAGE)
@@ -80,6 +87,58 @@ public class SocketService {
                                 .tag(null)
                                 .isBookmarked(false)
                                 .placeDetail(null)
+                                .communityDetail(null)
+                                .replyMessage(null)
+                                .build()
+                )
+                .createdAt(message.getCreatedAt())
+                .build();
+    }
+
+    //메세지 답장
+    @Transactional
+    public MessageResponse replyMessageToRoom(Long userId, Long roomId, String content, Long messageId){
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
+
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 채팅방이 존재하지 않습니다."));
+
+        Message replyMessage = messageRepository.findById(messageId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 메세지가 존재하지 않습니다."));
+
+        // 삭제된 메세지에 답장 불가
+        if (replyMessage.getMessageStatus().equals(MessageStatus.DELETE))
+            throw new CustomException(ErrorCode.MESSAGE_DELETED);
+
+        Message message = Message.builder()
+                .room(room)
+                .user(user)
+                .messageType(MessageType.TEXT)
+                .messageStatus(MessageStatus.ACTIVE)
+                .content(content)
+                .replyMessage(replyMessage)
+                .build();
+        messageRepository.save(message);
+
+        publisher.publishEvent(new ChatMessageCreatedEvent(
+                roomId, userId, user.getNickname(), user.getPhotoUrl(), message.getContent(), message.getMessageType()
+        ));
+
+        return MessageResponse.builder()
+                .actionType(ActionType.MESSAGE_REPLY)
+                .user(new UserResponse(userId, user.getNickname(), user.getPhotoUrl()))
+                .message(
+                        MessageDto.builder()
+                                .messageId(message.getMessageId())
+                                .content(message.getContent())
+                                .messageType(message.getMessageType())
+                                .messageStatus(MessageStatus.ACTIVE)
+                                .tag(null)
+                                .isBookmarked(false)
+                                .placeDetail(null)
+                                .communityDetail(null)
+                                .replyMessage(new ReplyMessage(replyMessage.getMessageId(), replyMessage.getContent()))
                                 .build()
                 )
                 .createdAt(message.getCreatedAt())
@@ -88,7 +147,7 @@ public class SocketService {
 
     // 장소 공유
     @Transactional
-    public MessageResponse sendMapMessageToRoom(Long userId, Long roomId, String placeId, String displayName, Double latitude, Double longitude, String photoUrl) throws FirebaseMessagingException {
+    public MessageResponse sendMapMessageToRoom(Long userId, Long roomId, String placeId, String displayName, Double latitude, Double longitude, String photoUrl){
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
 
@@ -117,7 +176,9 @@ public class SocketService {
         message.setContent(messagePlaceDetail.getDisplayName());
         messageRepository.save(message);
 
-        sendMessagePushNotification(roomId, message);
+        publisher.publishEvent(new ChatMessageCreatedEvent(
+                roomId, userId, user.getNickname(), user.getPhotoUrl(), message.getContent(), message.getMessageType()
+        ));
 
         return MessageResponse.builder()
                 .actionType(ActionType.NEW_MAP_MESSAGE)
@@ -131,7 +192,62 @@ public class SocketService {
                                 .tag(null)
                                 .isBookmarked(false)
                                 .placeDetail(makePlaceDetail(message.getMessageId()))
+                                .communityDetail(null)
+                                .replyMessage(null)
                                 .build()
+                )
+                .createdAt(message.getCreatedAt())
+                .build();
+    }
+
+    // 커뮤니티 게시글 공유
+    @Transactional
+    public MessageResponse shareCommunityTripPost(Long userId, Long roomId, Long postId){
+        log.info("일정 공유 요청");
+        if (!userRoomRepository.existsByUser_UserIdAndRoom_RoomId(userId, roomId)) {
+            throw new BadCredentialsException("해당 채팅방에 보낼 수 없습니다.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
+
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 채팅방이 존재하지 않습니다."));
+
+        Message message = Message.builder()
+                .room(room)
+                .user(user)
+                .messageType(MessageType.COMMUNITY_SHARE)
+                .messageStatus(MessageStatus.ACTIVE)
+                .content(postId.toString())
+                .build();
+        messageRepository.save(message);
+
+        log.info("일정 공유 메세지 저장 완료");
+
+        publisher.publishEvent(new ChatMessageCreatedEvent(
+                roomId, userId, user.getNickname(), user.getPhotoUrl(), "커뮤니티 게시글을 공유했습니다.", message.getMessageType()
+        ));
+
+        Post p = postRepository.findById(postId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 게시글이 존재하지 않습니다."));
+
+        String imageUrl = postImageRepository.findImageUrlByPostId(postId);
+
+        return MessageResponse.builder()
+                .actionType(ActionType.NEW_COMMUNITY_SHARE)
+                .user(new UserResponse(userId, user.getNickname(), user.getPhotoUrl()))
+                .message(
+                        MessageDto.builder()
+                        .messageId(message.getMessageId())
+                        .content(message.getContent())
+                        .messageType(MessageType.COMMUNITY_SHARE)
+                        .tag(null)
+                        .isBookmarked(null)
+                        .placeDetail(null)
+                        .communityDetail(new CommunityDetail(postId, p.getTitle(), imageUrl))
+                        .replyMessage(null)
+                        .build()
                 )
                 .createdAt(message.getCreatedAt())
                 .build();
@@ -150,6 +266,8 @@ public class SocketService {
                 .messageStatus(null)
                 .tag(null)
                 .placeDetail(null)
+                .communityDetail(null)
+                .replyMessage(null)
                 .build();
 
         MessageBookmark messageBookmark = messageBookmarkRepository.findByMessage_MessageId(messageId);
@@ -185,8 +303,6 @@ public class SocketService {
             throw new IllegalArgumentException("해당 타입의 메세지에는 장소 태그를 지정할 수 없습니다.");
         }
 
-        // todo messagePlaceDetail에서 조회하기?
-
         MessageDto messageDto = MessageDto.builder()
                 .messageId(messageId)
                 .content(null)
@@ -194,6 +310,8 @@ public class SocketService {
                 .messageStatus(null)
                 .isBookmarked(null)
                 .placeDetail(null)
+                .communityDetail(null)
+                .replyMessage(null)
                 .build();
 
         MessagePlace messagePlace = messagePlaceRepository.findByMessage_MessageId(messageId);
@@ -246,6 +364,8 @@ public class SocketService {
                 .tag(null)
                 .isBookmarked(null)
                 .placeDetail(null)
+                .communityDetail(null)
+                .replyMessage(null)
                 .build();
 
         return MessageResponse.builder()
@@ -263,6 +383,7 @@ public class SocketService {
                 .orElseThrow(() -> new EntityNotFoundException("해당 메세지가 존재하지 않습니다."));
 
         message.setMessageStatus(MessageStatus.DELETE);
+        message.setContent("삭제된 메세지입니다.");
         message.setUpdatedAt(LocalDateTime.now());
         messageRepository.save(message);
 
@@ -274,6 +395,8 @@ public class SocketService {
                 .tag(null)
                 .isBookmarked(null)
                 .placeDetail(null)
+                .communityDetail(null)
+                .replyMessage(null)
                 .build();
 
         return MessageResponse.builder()
@@ -283,44 +406,36 @@ public class SocketService {
                 .createdAt(null)
                 .build();
     }
-//   //todo 채팅방 구독상태인가
-//    private boolean isUserConnected(Room room, Long userId) {
-//
-//    }
-//
-    private void sendMessagePushNotification(Long roomId, Message message) throws FirebaseMessagingException {
-        List<User> users = userRoomRepository.findUsersByRoomIdAndIsAlarm(roomId, IsAlarm.ON);
-        log.info("message push notification send");
 
-//        Room room = roomRepository.findById(roomId)
-//                .orElseThrow(() -> new EntityNotFoundException("해당 채팅방이 존재하지 않습니다"));
-//
-//        List<Token> tokens = users.stream()
-//                .filter(user -> !isUserConnected(room, user.getUserId()))
-//                .map(Token::getUser)
-//                .filter(token -> token != null)
-//                .;
-//
-//        User user = message.getUser();
-//        String roomName = room.getRoomName();
-//        String content = user.getNickname() + "\n" +
-//                (message.getMessageType().equals(MessageType.TEXT) ?
-//                message.getContent()
-//                : messagePlaceDetailRepository.findByMessage_MessageId(message.getMessageId()).getDisplayName());
-//        String image = user.getPhotoUrl();
-//
-//        for (Token t : tokens) {
-//            FcmSendRequest fcmSendRequest = FcmSendRequest.builder()
-//                    .requestType(RequestType.MESSAGE)
-//                    .id(0L)
-//                    .title(roomName)
-//                    .content(content)
-//                    .image(image)
-//                    .token(t.getToken())
-//                    .build();
-//
-//            fcmSender.sendPushNotification(fcmSendRequest);
-//        }
+    @Transactional
+    public void saveLastReadMessage(Long userId, Long roomId) {
+        Long messageId = messageRepository.findLastReadMessageIdByRoom_RoomId(roomId);
+        if (messageId == null) {
+            return;
+        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 채팅방이 존재하지 않습니다."));
+
+        RoomReadState r = roomReadStateRepository.findByRoom_RoomIdAndUser_UserId(roomId, userId);
+        // 만약에 이미 읽은 기록이 있다면 업데이트 없다면 생성
+        if (r == null) {
+            log.debug("새로운 읽음 상태 저장");
+            RoomReadStateId id = new RoomReadStateId(userId, roomId);
+            RoomReadState roomReadState = RoomReadState.builder()
+                    .id(id)
+                    .user(user)
+                    .room(room)
+                    .lastReadMessageId(messageId)
+                    .build();
+            roomReadStateRepository.save(roomReadState);
+        } else {
+            log.debug("읽음 상태 업데이트");
+            r.setLastReadMessageId(messageId);
+            roomReadStateRepository.save(r);
+        }
+        log.debug("마지막 읽은 메세지 저장 완료: userId={}, roomId={}, messageId={}", userId, roomId, messageId);
     }
 
     private PlaceDetail makePlaceDetail(Long messageId) {

@@ -1,5 +1,6 @@
 package triB.triB.community.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import triB.triB.community.entity.Hashtag;
@@ -7,6 +8,7 @@ import triB.triB.community.entity.TagType;
 
 @Getter
 @Builder
+@AllArgsConstructor
 public class HashtagResponse {
     private Long hashtagId;
     private String tagName;

@@ -8,8 +8,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2RefreshToken;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +50,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final RedisClient redisClient;
     private final ObjectMapper objectMapper;
     private final OauthAccountRepository oauthAccountRepository;
+    private final OAuth2AuthorizedClientRepository authorizedClientRepository;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
@@ -66,6 +70,19 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         String nickname = oAuth2UserInfo.getNickname();
         log.info("provider = " + provider + " providerId = " + providerId + " photoUrl = " + photoUrl);
 
+        String appleRefreshToken = null;
+        if (provider.equals("apple")) {
+            OAuth2AuthorizedClient client = authorizedClientRepository.loadAuthorizedClient(
+                    token.getAuthorizedClientRegistrationId(),
+                    authentication,
+                    request
+            );
+            OAuth2RefreshToken refreshToken = client.getRefreshToken();
+            if (refreshToken != null) {
+                appleRefreshToken = refreshToken.getTokenValue();
+                log.info("appleRefreshToken 획득 {}", appleRefreshToken);
+            }
+        }
         Optional<OauthAccount> existUser = oauthAccountRepository.findByProviderAndProviderUserId(provider, providerId);
 
         String targetUrl;
@@ -79,8 +96,12 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             body.put("registerToken", registerToken);
             body.put("photoUrl", photoUrl);
             body.put("nickname", nickname);
-            String key = redisClient.setTicketData("ti", objectMapper.writeValueAsString(body));
 
+            if(appleRefreshToken != null) {
+                body.put("appleRefreshToken", appleRefreshToken);
+            }
+
+            String key = redisClient.setTicketData("ti", objectMapper.writeValueAsString(body));
             log.info("key = {}, body = {}", key, objectMapper.writeValueAsString(body));
 
             targetUrl = UriComponentsBuilder.fromUriString(redirectUrl)
@@ -89,9 +110,14 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
         } else {
             log.info("기존 유저 입니다. 메인 페이지로 리디렉션합니다.");
+            OauthAccount account = existUser.get();
             User user = existUser.get().getUser();
             Long userId = user.getUserId();
 
+            if (appleRefreshToken != null) {
+                account.setRefreshToken(appleRefreshToken);
+                oauthAccountRepository.save(account);
+            }
             String accessToken = jwtProvider.generateAccessToken(user.getUserId());
             String refreshToken = jwtProvider.generateRefreshToken(user.getUserId());
 

@@ -1,5 +1,5 @@
 package triB.triB.chat.entity;
 
 public enum MessageType {
-    TEXT, MAP
+    TEXT, MAP, COMMUNITY_SHARE
 }

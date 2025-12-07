@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
                 @UniqueConstraint(columnNames = "username")
         }
 )
-@Where(clause = "user_status = 'ACTIVE'")
+//@Where(clause = "user_status = 'ACTIVE'")
 public class User {
 
     @Id

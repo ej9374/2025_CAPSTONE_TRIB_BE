@@ -5,28 +5,25 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.actuate.autoconfigure.metrics.MetricsProperties;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.reactive.function.BodyInserter;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import software.amazon.awssdk.services.s3.S3Client;
 import triB.triB.auth.dto.UnlinkResponse;
 import triB.triB.auth.entity.*;
 import triB.triB.auth.repository.OauthAccountRepository;
 import triB.triB.auth.repository.TokenRepository;
 import triB.triB.auth.repository.UserRepository;
+import triB.triB.auth.security.AppleClientSecretGenerator;
 import triB.triB.global.infra.AwsS3Client;
 import triB.triB.global.infra.RedisClient;
 import triB.triB.user.dto.MyProfile;
+import triB.triB.user.dto.UpdateProfileRequest;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,13 +33,18 @@ import java.util.Map;
 @Slf4j
 public class UserService {
 
+    @Value("${spring.security.oauth2.client.registration.apple.client-id}")
+    private String clientId;
+
     private final AwsS3Client s3Client;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final RedisClient redisClient;
     private final TokenRepository tokenRepository;
     private final OauthAccountRepository oauthAccountRepository;
+    private final AppleClientSecretGenerator clientSecretGenerator;
     private final @Qualifier("kakaoWebClient") WebClient kakaoWebClient;
+    private final @Qualifier("appleWebClient") WebClient appleWebClient;
 
     public MyProfile getMyProfile(Long userId) {
         log.info("userId = {}의 프로필", userId);
@@ -59,18 +61,30 @@ public class UserService {
     }
 
     @Transactional
-    public void updateMyProfile(Long userId, MultipartFile photo, String nickname) {
+    public void updateMyProfile(Long userId, MultipartFile photo, UpdateProfileRequest updateProfileRequest) {
         User user = userRepository.findById(userId)
                 .orElseThrow(()-> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
 
+        if (updateProfileRequest != null){
+            if (Boolean.TRUE.equals(updateProfileRequest.getIsDeleted())) {
+                if (user.getPhotoUrl() != null) {
+                    s3Client.delete(user.getPhotoUrl());
+                }
+                user.setPhotoUrl(null);
+            }
+            String nickname = updateProfileRequest.getNickname();
+            if (nickname != null && !nickname.isEmpty()) {
+                log.info("userId = {} 의 닉네임을 변경합니다.", userId);
+                user.setNickname(nickname);
+            }
+        }
         if (photo != null && !photo.isEmpty()){
             log.info("userId = {} 의 프로필 이미지를 변경합니다.", userId);
+            if (user.getPhotoUrl() != null) {
+                s3Client.delete(user.getPhotoUrl());
+            }
             String newPhoto = s3Client.uploadFile(photo);
             user.setPhotoUrl(newPhoto);
-        }
-        if (nickname != null) {
-            log.info("userId = {} 의 닉네임을 변경합니다.", userId);
-            user.setNickname(nickname);
         }
         userRepository.save(user);
     }
@@ -109,30 +123,47 @@ public class UserService {
     }
 
     @Transactional
-    public void deleteUser(Long userId) {
+    public void deleteUser(Long userId){
         User user = userRepository.findById(userId)
                 .orElseThrow(()-> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
 
-        OauthAccount account;
-        if ((account = oauthAccountRepository.findByUser_UserId(userId)) != null) {
+        OauthAccount account = oauthAccountRepository.findByUser_UserId(userId);
+        if (account  != null) {
             log.info("oauth 존재 확인 완료");
-            UnlinkResponse response;
-            if (account.getProvider().equals("kakao")) {
-                log.info("kakao와 연결 끊기");
-                response = unlinkKakao(account.getProviderUserId());
-                log.info("kakao와 연결 끊기 성공");
+            try {
+                if (account.getProvider().equals("kakao")) {
+                    log.info("kakao와 연결 끊기");
+                    unlinkKakao(account.getProviderUserId());
+                }
+                if (account.getProvider().equals("apple")) {
+                    log.info("apple과 연결 끊기");
+                    if (account.getRefreshToken() != null) {
+                        unlinkApple(account.getRefreshToken());
+                    }
+                }
+            } catch (Exception e) {
+                // ★ 중요: 소셜 연동 해제가 실패하더라도, 우리 DB에서 회원은 삭제되어야 함
+                log.error("소셜 연동 해제 실패 (탈퇴는 계속 진행됩니다). provider: {}, error: {}", account.getProvider(), e.getMessage());
             }
             oauthAccountRepository.delete(account);
         }
 
+        tokenRepository.findByUser_UserId(userId).ifPresent(tokenRepository::delete);
+
         redisClient.deleteData("rf", String.valueOf(userId));
-        s3Client.delete(user.getPhotoUrl());
+        try {
+            if (user.getPhotoUrl() != null)
+                s3Client.delete(user.getPhotoUrl());
+        } catch(Exception e){
+            log.error("프로필 이미지 삭제 실패: {}", e.getMessage());
+        }
         user.setUserStatus(UserStatus.DELETED);
+        user.setNickname("(탈퇴한 사용자)");
         user.setEmail(null);
         user.setUsername(null);
+        user.setPhotoUrl(null);
         userRepository.save(user);
         log.info("user 상태변경 완료");
-
 
         log.info("userId = {} 인 유저가 탈퇴했습니다.", userId);
     }
@@ -147,33 +178,39 @@ public class UserService {
     }
 
     @Transactional
-    public void saveToken(Long userId, String deviceId, String token) {
+    public void saveToken(Long userId, String token) {
         try {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
 
-            tokenRepository.findByUser_UserIdAndDeviceId(userId, deviceId)
+            tokenRepository.findByUser_UserId(userId)
                     .ifPresentOrElse(
                             t -> {
                                 t.setToken(token);
+                                tokenRepository.save(t);
                             },
                             () -> {
                                 Token t = Token.builder()
                                         .user(user)
-                                        .deviceId(deviceId)
                                         .token(token)
                                         .build();
                                 tokenRepository.save(t);
                             }
                     );
         } catch (DataIntegrityViolationException e){
-            tokenRepository.findByUser_UserIdAndDeviceId(userId, deviceId)
+            tokenRepository.findByUser_UserId(userId)
                     .ifPresent(t -> t.setToken(token));
         }
     }
 
-    private UnlinkResponse unlinkKakao(String providerUserId){
-        return kakaoWebClient.post()
+    @Transactional
+    public void logout(Long userId) {
+        tokenRepository.findByUser_UserId(userId)
+                .ifPresent(tokenRepository::delete);
+    }
+
+    private void unlinkKakao(String providerUserId){
+        kakaoWebClient.post()
                 .uri("/v1/user/unlink")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(BodyInserters
@@ -182,6 +219,20 @@ public class UserService {
                 .retrieve()
                 .bodyToMono(UnlinkResponse.class)
                 .block();
+    }
 
+    private void unlinkApple(String refreshToken) throws Exception {
+        String clientSecret = clientSecretGenerator.generateAppleClientSecret();
+        appleWebClient.post()
+                .uri("https://appleid.apple.com/auth/revoke")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(BodyInserters
+                        .fromFormData("client_id", clientId) // app bundle id (예: com.example.app)
+                        .with("client_secret", clientSecret) // 아래 설명 참조 (ES256 서명된 JWT)
+                        .with("token", refreshToken) // 유저의 리프레시 토큰
+                        .with("token_type_hint", "refresh_token"))
+                .retrieve()
+                .toBodilessEntity()
+                .block();
     }
 }

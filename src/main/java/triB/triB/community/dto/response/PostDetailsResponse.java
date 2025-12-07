@@ -34,6 +34,11 @@ public class PostDetailsResponse {
     private LocalDate startDate;
     private LocalDate endDate;
 
+    // TRIP_SHARE 전용 평가 필드
+    private Boolean matchesPreferences; // 취향에 맞는지
+    private Boolean isPractical; // 실용적인지
+    private String travelReview; // 여행평가
+
     private Integer likesCount;
     private Integer commentsCount;
     private Boolean isLikedByMe;  // 현재 사용자의 좋아요 여부
@@ -57,6 +62,9 @@ public class PostDetailsResponse {
                 .destination(trip != null ? trip.getDestination() : null)
                 .startDate(trip != null && trip.getRoom() != null ? trip.getRoom().getStartDate() : null)
                 .endDate(trip != null && trip.getRoom() != null ? trip.getRoom().getEndDate() : null)
+                .matchesPreferences(post.getMatchesPreferences())
+                .isPractical(post.getIsPractical())
+                .travelReview(post.getTravelReview())
                 .likesCount(post.getLikesCount())
                 .commentsCount(post.getCommentsCount())
                 .isLikedByMe(isLikedByMe)

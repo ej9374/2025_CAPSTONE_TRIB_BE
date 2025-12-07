@@ -3,6 +3,7 @@ package triB.triB.global.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -15,11 +16,11 @@ import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import triB.triB.auth.security.CustomRequestEntityConverter;
 import triB.triB.auth.security.OAuth2LoginSuccessHandler;
 import triB.triB.global.exception.ExceptionHandlerFilter;
 import triB.triB.global.security.JwtAuthenticationFilter;
 
-import java.util.Collections;
 import java.util.List;
 
 @Configuration
@@ -30,6 +31,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
     private final ExceptionHandlerFilter exceptionHandlerFilter;
+    private final CustomRequestEntityConverter customRequestEntityConverter;
 
     @Bean
     public PasswordEncoder passwordEncoder(){
@@ -39,7 +41,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors((cors) -> {})
+                .cors((cors) -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -51,7 +53,9 @@ public class SecurityConfig {
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers(
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/chat/trip").permitAll() // ← 추가
+                        .requestMatchers(
                             "/v3/api-docs/**",
                             "/swagger-ui/**",
                             "/swagger-ui.html",
@@ -67,7 +71,16 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth
-                        .successHandler(oAuth2LoginSuccessHandler))
+                        .tokenEndpoint(token -> token
+                                .accessTokenResponseClient(customRequestEntityConverter))
+                        .successHandler(oAuth2LoginSuccessHandler)
+                        .failureHandler((request, response, exception) -> {
+                            System.out.println("============== 🚨 진짜 에러 발생 원인 🚨 ==============");
+                            exception.printStackTrace(); // 콘솔에 에러 내용을 상세히 찍음
+
+                            response.setStatus(400);
+                            response.getWriter().write("Login Failed: " + exception.getMessage());
+                        }))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(exceptionHandlerFilter, SecurityContextHolderFilter.class)

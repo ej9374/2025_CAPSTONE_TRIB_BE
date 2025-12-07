@@ -7,6 +7,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import triB.triB.auth.entity.User;
 
+import java.security.Principal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.Map;
 
 @Getter
 @RequiredArgsConstructor
-public class UserPrincipal implements OAuth2User, UserDetails {
+public class UserPrincipal implements OAuth2User, UserDetails, Principal {
 
     private final User user;
     private final Long userId;

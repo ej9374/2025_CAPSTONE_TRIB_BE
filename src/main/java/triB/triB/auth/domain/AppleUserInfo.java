@@ -11,7 +11,7 @@ public class AppleUserInfo implements OAuth2UserInfo {
 
     @Override
     public String getProviderId() {
-        return (String) attributes.get("provider");
+        return (String) attributes.get("sub");
     }
 
     @Override
@@ -21,11 +21,14 @@ public class AppleUserInfo implements OAuth2UserInfo {
 
     @Override
     public String getNickname() {
-        return (String) attributes.get("nickname");
+        if (attributes.containsKey("name")) {
+            return (String) attributes.get("name");
+        }
+        return null;
     }
 
     @Override
     public String getProfileImageUrl() {
-        return (String) attributes.get("profileImageUrl");
+        return null;
     }
 }

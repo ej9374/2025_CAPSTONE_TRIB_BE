@@ -17,6 +17,7 @@ import triB.triB.global.security.UserPrincipal;
 import triB.triB.user.dto.MyProfile;
 import triB.triB.user.dto.PasswordRequest;
 import triB.triB.user.dto.TokenRequest;
+import triB.triB.user.dto.UpdateProfileRequest;
 import triB.triB.user.service.UserService;
 
 import java.util.HashMap;
@@ -42,10 +43,10 @@ public class UserController {
     public ResponseEntity<ApiResponse<MyProfile>> updateMyProfile(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestPart(value = "photo", required = false) MultipartFile photo,
-            @RequestPart(value = "nickname", required = false) String nickname
+            @RequestPart(value = "meta", required = false) UpdateProfileRequest updateProfileRequest
     ) {
         Long userId = userPrincipal.getUserId();
-        userService.updateMyProfile(userId, photo, nickname);
+        userService.updateMyProfile(userId, photo, updateProfileRequest);
         return ApiResponse.ok("프로필 이미지 및 닉네임을 수정했습니다.", null);
     }
 
@@ -89,7 +90,17 @@ public class UserController {
     @PostMapping("/token")
     public ResponseEntity<ApiResponse<Void>> saveFcmToken(@AuthenticationPrincipal UserPrincipal userPrincipal, @RequestBody TokenRequest tokenRequest) {
         Long userId = userPrincipal.getUserId();
-        userService.saveToken(userId, tokenRequest.getDeviceId(), tokenRequest.getToken());
+        userService.saveToken(userId, tokenRequest.getToken());
         return ApiResponse.ok("토큰을 저장했습니다.", null);
+    }
+
+    /**
+     * 로그아웃 api 구현
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal UserPrincipal userPrincipal) {
+        Long userId = userPrincipal.getUserId();
+        userService.logout(userId);
+        return ApiResponse.ok("성공적으로 로그아웃했습니다.", null);
     }
 }

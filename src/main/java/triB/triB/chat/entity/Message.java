@@ -19,7 +19,8 @@ import java.time.LocalDateTime;
         name = "messages",
         indexes = {
                 @Index(name = "idx_room_id", columnList = "room_id"),
-                @Index(name = "idx_created_at", columnList = "created_at")
+                @Index(name = "idx_created_at", columnList = "created_at"),
+                @Index(name = "idx_msg_type", columnList = "message_type")
         }
 )
 public class Message {
@@ -38,7 +39,7 @@ public class Message {
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "message_type")
+    @Column(name = "message_type", length = 20)
     private MessageType messageType;
 
     @Enumerated(EnumType.STRING)
@@ -56,4 +57,8 @@ public class Message {
     @Column(name = "updated_at", nullable = false)
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    @ManyToOne
+    @JoinColumn(name = "reply_message", nullable = true)
+    private Message replyMessage;
 }

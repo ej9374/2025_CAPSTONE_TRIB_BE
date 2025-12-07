@@ -21,4 +21,5 @@ public class RoomsResponse {
     private String content;
     private LocalDateTime createdAt;
     private Integer messageNum;
+    private Integer people;
 }

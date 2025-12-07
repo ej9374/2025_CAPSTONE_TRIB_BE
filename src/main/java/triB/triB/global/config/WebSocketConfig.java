@@ -2,13 +2,17 @@ package triB.triB.global.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.SimpleAsyncTaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
-import triB.triB.global.stomp.StompHandler;
+import triB.triB.chat.stomp.StompInterceptor;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -16,7 +20,7 @@ import triB.triB.global.stomp.StompHandler;
 @Slf4j
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    private final StompHandler stompHandler;
+    private final StompInterceptor stompInterceptor;
 
     // HandShake와 통신할 EndPoint 지정
     @Override
@@ -30,7 +34,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config){
         //구독
-        config.enableSimpleBroker("/sub");
+        config.enableSimpleBroker("/sub")
+                .setHeartbeatValue(new long[]{10000, 10000})
+                .setTaskScheduler(taskScheduler());
         //발행
         config.setApplicationDestinationPrefixes("/pub");
     }
@@ -38,7 +44,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     // 인터셉터 등록
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(stompHandler);
+        registration.interceptors(stompInterceptor);
     }
 
+    @Bean
+    public TaskScheduler taskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("ws-heartbeat-");
+        scheduler.initialize();
+        return scheduler;
+    }
 }

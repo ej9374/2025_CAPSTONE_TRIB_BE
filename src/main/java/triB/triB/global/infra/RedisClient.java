@@ -34,4 +34,10 @@ public class RedisClient {
         valueOperations.set(prefix + ":" + key, body, Duration.ofSeconds(300));
         return key;
     }
+
+    public Boolean setIfAbsent(String prefix, String key, String value, long duration){
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+        return valueOperations.setIfAbsent(prefix + ":" + key, value, Duration.ofSeconds(duration));
+    }
+
 }

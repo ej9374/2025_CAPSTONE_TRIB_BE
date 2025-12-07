@@ -13,6 +13,7 @@ import triB.triB.auth.dto.*;
 import triB.triB.auth.service.AuthService;
 import triB.triB.auth.service.MailService;
 import triB.triB.global.response.ApiResponse;
+import triB.triB.user.dto.PasswordRequest;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -105,6 +106,12 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> socialLogin(@RequestParam String key) throws JsonProcessingException {
         Map<String, Object> data = authService.getBodyByTicket(key);
         return ApiResponse.ok("소셜로그인에 성공했습니다.", data);
+    }
+
+    @PostMapping("/password/{email}")
+    public ResponseEntity<ApiResponse<Void>> password(@PathVariable("email") @Email String email) {
+        authService.sendPasswordToEmail(email);
+        return ApiResponse.ok("임시 비밀번호를 이메일로 발급했습니다. 로그인 후 비밀번호를 변경해주세요.", null);
     }
 }
 

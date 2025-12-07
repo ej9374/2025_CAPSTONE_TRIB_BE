@@ -38,9 +38,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuthService {
 
-    @Value("${spring.mail.auth-code-expiration-millis}")
-    private long authCodeExpirationMillis;
-
     private final MailService mailService;
     private final UserRepository userRepository;
     private final OauthAccountRepository oauthAccountRepository;
@@ -49,8 +46,8 @@ public class AuthService {
     private final AwsS3Client s3Client;
     private final JwtProvider jwtProvider;
     private final ObjectMapper objectMapper;
-    private final TokenRepository tokenRepository;
     private static final String charPool = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    private static final String passwordCharPool = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ?%!#*";
 
 
     public void sendCodeToEmail(String email) {
@@ -66,7 +63,7 @@ public class AuthService {
         log.info("생성된 인증번호: {}", authCode);
         String content = MailTemplate.signupCode(authCode);
         mailService.sendEmail(email, title, content);
-        redisClient.setData("ev", email, authCode, authCodeExpirationMillis);
+        redisClient.setData("ev", email, authCode, 600);
     }
 
     private String createCode(){
@@ -87,9 +84,11 @@ public class AuthService {
     public void verifiedCode(String email, String code) {
         log.info("이메일 인증번호 확인");
         String upperCode = code.toUpperCase();
-        if (redisClient.getData("ev", email) == null || !redisClient.getData("ev", email).equals(upperCode)) {
+        String savedCode = redisClient.getData("ev", email);
+        if (savedCode == null || !savedCode.equals(upperCode)) {
             throw new RuntimeException("인증번호가 일치하지 않습니다.");
         }
+        redisClient.deleteData("ev",email);
     }
 
     public void duplicateUsername(String username) {
@@ -102,7 +101,7 @@ public class AuthService {
         log.info("회원가입을 시작합니다.");
         String photoUrl = null;
         try {
-            photoUrl = !photo.isEmpty() ? s3Client.uploadFile(photo) : null;
+            photoUrl = (photo != null && !photo.isEmpty()) ? s3Client.uploadFile(photo) : null;
             User user = User.builder()
                     .photoUrl(photoUrl)
                     .email(authRequest.getEmail())
@@ -144,6 +143,9 @@ public class AuthService {
         String provider = jwtProvider.getProviderFromRegisterToken(registerToken);
         String providerId = jwtProvider.getProviderUserIdFromRegisterToken(registerToken);
         String image = registerRequest.getPhotoUrl();
+        String refreshToken = null;
+        if (registerRequest.getRefreshToken() != null && !registerRequest.getRefreshToken().isEmpty())
+            refreshToken = registerRequest.getRefreshToken();
 
         log.info("registerToken = " + registerToken + " providerId = " + providerId + " image = " + image);
 
@@ -171,6 +173,7 @@ public class AuthService {
                     .user(user)
                     .provider(provider)
                     .providerUserId(providerId)
+                    .refreshToken(refreshToken)
                     .build();
             oauthAccountRepository.save(account);
             return user.getUserId();
@@ -211,5 +214,39 @@ public class AuthService {
         if (str == null)
             throw new EntityNotFoundException("해당 키가 존재하지 않습니다. 다시 로그인해주세요");
         return objectMapper.readValue(str, new TypeReference<Map<String, Object>>() {});
+    }
+
+    public void sendPasswordToEmail(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 이메일입니다."));
+
+        String title = "TriB 임시 비밀번호 생성";
+        log.info("전송해야될 메일: {}", email);
+
+        if (redisClient.getData("ev", email) != null)
+            redisClient.deleteData("ev",email);
+
+        String temporaryPassword = createTemporaryPassword();
+        log.info("생성된 임시 비밀번호: {}", temporaryPassword);
+        user.setPassword(passwordEncoder.encode(temporaryPassword));
+        userRepository.save(user);
+
+        String content = MailTemplate.newPassword(temporaryPassword);
+        mailService.sendEmail(email, title, content);
+    }
+
+    public String createTemporaryPassword(){
+        int length = 8;
+        try {
+            SecureRandom sr = SecureRandom.getInstanceStrong();
+            StringBuilder code = new StringBuilder();
+            for (int i = 0; i < length; i++) {
+                int index = sr.nextInt(passwordCharPool.length());
+                code.append(passwordCharPool.charAt(index));
+            }
+            return code.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("임시 비밀번호 생성을 실패했습니다.");
+        }
     }
 }
