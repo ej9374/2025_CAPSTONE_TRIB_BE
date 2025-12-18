@@ -3,6 +3,7 @@ package triB.triB.schedule.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
+import triB.triB.schedule.entity.TravelMode;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -34,6 +35,9 @@ public class TripScheduleWithLocationResponse {
 
     @Schema(description = "해당 날짜의 일정 목록 (위경도 포함)")
     private List<ScheduleItemWithLocationResponse> schedules;
+
+    @Schema(description = "여행 이동 수단", example = "DRIVE")
+    private TravelMode travelMode;
 
     @Schema(description = "AI 추정 예산", example = "500000")
     private Integer budget;

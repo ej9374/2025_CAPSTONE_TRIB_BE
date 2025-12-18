@@ -13,8 +13,12 @@ import triB.triB.auth.repository.UserRepository;
 import triB.triB.chat.entity.MessageStatus;
 import triB.triB.chat.entity.MessageType;
 import triB.triB.community.repository.PostRepository;
+import triB.triB.community.repository.UserBlockRepository;
 import triB.triB.friendship.dto.UserResponse;
 import triB.triB.friendship.repository.FriendRepository;
+import triB.triB.global.exception.CustomException;
+import triB.triB.global.exception.ErrorCode;
+import triB.triB.global.utils.CheckBadWordsUtil;
 import triB.triB.room.dto.*;
 import triB.triB.chat.entity.Message;
 import triB.triB.room.entity.Room;
@@ -42,6 +46,8 @@ public class RoomService {
     private final UserRepository userRepository;
     private final FriendRepository friendRepository;
     private final PostRepository postRepository;
+    private final UserBlockRepository userBlockRepository;
+    private final CheckBadWordsUtil checkBadWordsUtil;
 
     @Transactional(readOnly = true)
     public List<RoomsResponse> getRoomList(Long userId){
@@ -71,6 +77,9 @@ public class RoomService {
 
     @Transactional
     public RoomResponse makeChatRoom(Long userId, RoomRequest roomRequest) {
+        Set<Long> blockedUserIds = new HashSet<>(userBlockRepository.findBlockedUserIdsByBlockerUserId(userId));
+
+        checkBadWordsUtil.validateNoBadWords(roomRequest.getRoomName());
 
         Room room = Room.builder()
                 .roomName(roomRequest.getRoomName())
@@ -91,8 +100,13 @@ public class RoomService {
         for (Long id : userIds) {
             User user = userRepository.findById(id)
                     .orElseThrow(() -> new EntityNotFoundException("유저가 존재하지 않습니다."));
+            if (blockedUserIds.contains(id)) {
+                throw new CustomException(ErrorCode.INVITE_BLOCKED);
+            }
             if (user.getUserStatus() == UserStatus.DELETED)
                 continue;
+
+
             UserRoom userRoom = UserRoom.builder()
                     .id(new UserRoomId(user.getUserId(), room.getRoomId()))
                     .user(user)
@@ -136,6 +150,7 @@ public class RoomService {
             room.setDestination(roomRequest.getCountry());
         }
         if (roomName != null) {
+            checkBadWordsUtil.validateNoBadWords(roomRequest.getRoomName());
             room.setRoomName(roomRequest.getRoomName());
         }
         if (startDate != null) {
@@ -144,6 +159,7 @@ public class RoomService {
         if (endDate != null) {
             room.setEndDate(endDate);
         }
+        roomRepository.save(room);
     }
 
     @Transactional
@@ -154,8 +170,13 @@ public class RoomService {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 채팅방이 존재하지 않습니다."));
 
+        Set<Long> blockedUserIds = new HashSet<>(userBlockRepository.findBlockedUserIdsByBlockerUserId(userId));
+
         for (Long id : userIds) {
             UserRoom ur;
+            if (blockedUserIds.contains(id)) {
+                throw new CustomException(ErrorCode.INVITE_BLOCKED);
+            }
             if ((ur = userRoomRepository.findByUserIdAndRoomIdWithoutFilter(id, roomId)) != null){
                 if (ur.getRoomStatus().equals(RoomStatus.EXIT)){
                     ur.setRoomStatus(RoomStatus.ACTIVE);
@@ -183,11 +204,13 @@ public class RoomService {
         if (!userRoomRepository.existsByUser_UserIdAndRoom_RoomId(userId, roomId)){
             throw new BadCredentialsException("해당 채팅방에 대한 권한이 없습니다");
         }
+        Set<Long> blockedUserIds = new HashSet<>(userBlockRepository.findBlockedUserIdsByBlockerUserId(userId));
 
         return friendRepository.findAllFriendByUserAndUserStatus(userId, UserStatus.ACTIVE)
                 .stream()
                 .filter(user -> !userRoomRepository
                         .existsByUser_UserIdAndRoom_RoomId(user.getUserId(), roomId))
+                .filter(f -> !blockedUserIds.contains(f.getUserId()))
                 .map(user -> UserResponse.builder()
                         .userId(user.getUserId())
                         .nickname(user.getNickname())

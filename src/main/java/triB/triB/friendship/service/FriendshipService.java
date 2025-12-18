@@ -5,6 +5,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
@@ -15,12 +16,14 @@ import triB.triB.auth.entity.User;
 import triB.triB.auth.entity.UserStatus;
 import triB.triB.auth.repository.TokenRepository;
 import triB.triB.auth.repository.UserRepository;
+import triB.triB.community.repository.UserBlockRepository;
 import triB.triB.friendship.dto.FriendRequest;
 import triB.triB.friendship.dto.NewUserResponse;
 import triB.triB.friendship.dto.UserResponse;
 import triB.triB.friendship.entity.Friend;
 import triB.triB.friendship.entity.Friendship;
 import triB.triB.friendship.entity.FriendshipStatus;
+import triB.triB.friendship.event.FriendshipEvent;
 import triB.triB.friendship.repository.FriendRepository;
 import triB.triB.friendship.repository.FriendshipRepository;
 import triB.triB.global.exception.CustomException;
@@ -29,28 +32,24 @@ import triB.triB.global.fcm.FcmSendRequest;
 import triB.triB.global.fcm.FcmSender;
 import triB.triB.global.fcm.RequestType;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class FriendshipService {
 
-    @Value("${triB-logo}")
-    private String tribImage;
-
     private final FriendshipRepository friendshipRepository;
     private final FriendRepository friendRepository;
     private final UserRepository userRepository;
-    private final FcmSender fcmSender;
-    private final TokenRepository tokenRepository;
+    private final ApplicationEventPublisher publisher;
+    private final UserBlockRepository userBlockRepository;
 
     public List<UserResponse> getMyFriends(Long userId){
-
-        List<User> friends = friendRepository.findAllFriendByUserAndUserStatus(userId, UserStatus.ACTIVE);
+        Set<Long> blockedUserIds = getUserBlockedUserIds(userId);
+        List<User> friends = friendRepository.findAllFriendByUserAndUserStatus(userId, UserStatus.ACTIVE).stream()
+                .filter(f -> !blockedUserIds.contains(f.getUserId()))
+                .toList();
         List<UserResponse> result = new ArrayList<>();
 
         friends.forEach(friend -> {
@@ -71,7 +70,10 @@ public class FriendshipService {
     }
 
     public List<UserResponse> searchMyFriends(Long userId, String nickname){
-        List<User> friends = friendRepository.findAllFriendByUserAndFriend_NicknameAndUserStatus(userId, nickname, UserStatus.ACTIVE);
+        Set<Long> blockedUserIds = getUserBlockedUserIds(userId);
+        List<User> friends = friendRepository.findAllFriendByUserAndFriend_NicknameAndUserStatus(userId, nickname, UserStatus.ACTIVE).stream()
+                .filter(f -> !blockedUserIds.contains(f.getUserId()))
+                .toList();
         List<UserResponse> result = new ArrayList<>();
 
         friends.forEach(friend -> {
@@ -86,9 +88,14 @@ public class FriendshipService {
                 .orElseThrow(() -> new EntityNotFoundException("해당 아이디의 유저가 존재하지 않습니다."));
 
         User me = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("로그인한 유저의 아이디가 틀렸습니다."));
+                .orElseThrow(() -> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
 
-        if (me.equals(user)) {
+        if (user.equals(me)) {
+            return null;
+        }
+
+        if (userBlockRepository.existsByIdBlockerUserIdAndIdBlockedUserId(userId, user.getUserId()) ||
+                userBlockRepository.existsByIdBlockerUserIdAndIdBlockedUserId(user.getUserId(), userId)) {
             return null;
         }
 
@@ -104,12 +111,19 @@ public class FriendshipService {
 
     // 친구 요청 보내기
     @Transactional
-    public void requestFriendshipToUser(Long userId1, Long userId2) throws FirebaseMessagingException {
+    public void requestFriendshipToUser(Long userId1, Long userId2){
         User requester = userRepository.findById(userId1)
                 .orElseThrow(() -> new EntityNotFoundException("친구 요청을 보내는 유저가 존재하지 않습니다."));
 
         User addressee = userRepository.findById(userId2)
                 .orElseThrow(() -> new EntityNotFoundException("친구 요청을 보낼 유저가 존재하지 않습니다."));
+
+        if (userBlockRepository.existsByIdBlockerUserIdAndIdBlockedUserId(userId2, userId1)) {
+            throw new CustomException(ErrorCode.REQUEST_TO_BLOCKER);
+        }
+        if (userBlockRepository.existsByIdBlockerUserIdAndIdBlockedUserId(userId1, userId2)) {
+            throw new CustomException(ErrorCode.REQUEST_TO_BLOCKED_USER);
+        }
 
         Friendship f1 = friendshipRepository.findByRequester_UserIdAndAddressee_UserIdAndFriendshipStatus(userId1, userId2, FriendshipStatus.REJECTED);
         Friendship f2 = friendshipRepository.findByRequester_UserIdAndAddressee_UserIdAndFriendshipStatus(userId2, userId1, FriendshipStatus.REJECTED);
@@ -137,19 +151,15 @@ public class FriendshipService {
                 .build();
 
         friendshipRepository.save(friendship);
-
-        //FCM 메세지 알림 보내기
-        log.info("push 알림을 전송합니다.");
-        Token token = tokenRepository.findByUser_UserIdAndUser_IsAlarm(friendship.getAddressee().getUserId(), IsAlarm.ON);
-        if (token != null) {
-            FcmSendRequest fcmSendRequest = sendPushToToken(RequestType.FRIEND_REQUEST, requester.getNickname()+" 님이 나에게 친구를 신청했어요!", token.getToken());
-            fcmSender.sendPushNotification(fcmSendRequest);
-        }
+        publisher.publishEvent(new FriendshipEvent(RequestType.FRIEND_REQUEST, userId1, userId2));
     }
 
     // 내게 온 요청 확인
     public List<FriendRequest> getMyRequests(Long userId){
-        List<Friendship> requests = friendshipRepository.findAllByAddressee_UserIdAndFriendshipStatusAndUserStatusOrderByCreatedAtAsc(userId, FriendshipStatus.PENDING, UserStatus.ACTIVE);
+        Set<Long> blockedUserIds = getUserBlockedUserIds(userId);
+        List<Friendship> requests = friendshipRepository.findAllByAddressee_UserIdAndFriendshipStatusAndUserStatusOrderByCreatedAtAsc(userId, FriendshipStatus.PENDING, UserStatus.ACTIVE).stream()
+                .filter(f -> !blockedUserIds.contains(f.getRequester().getUserId()))
+                .toList();
         List<FriendRequest> result = new ArrayList<>();
 
         requests.forEach(friendship -> {
@@ -162,7 +172,7 @@ public class FriendshipService {
 
     // 내게 온 친구요청 수락
     @Transactional
-    public void acceptMyFriendship(Long userId, Long friendshipId) throws FirebaseMessagingException {
+    public void acceptMyFriendship(Long userId, Long friendshipId){
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new EntityNotFoundException("해당 요청이 존재하지 않습니다."));
 
@@ -185,13 +195,7 @@ public class FriendshipService {
         friendRepository.save(friend1);
         friendRepository.save(friend2);
 
-        // FCM 메세지 알림 보내기
-        log.info("push 알림을 전송합니다.");
-        Token token = tokenRepository.findByUser_UserIdAndUser_IsAlarm(friendship.getRequester().getUserId(), IsAlarm.ON);
-        if (token != null) {
-            FcmSendRequest fcmSendRequest = sendPushToToken(RequestType.FRIEND_ACCEPTED, friendship.getAddressee().getNickname()+" 님과 친구가 되었어요!", token.getToken());
-            fcmSender.sendPushNotification(fcmSendRequest);
-        }
+        publisher.publishEvent(new FriendshipEvent(RequestType.FRIEND_ACCEPTED, friendship.getRequester().getUserId(), friendship.getAddressee().getUserId()));
     }
 
     // 내게 온 친구요청 거절
@@ -207,14 +211,7 @@ public class FriendshipService {
         friendshipRepository.save(friendship);
     }
 
-    private FcmSendRequest sendPushToToken(RequestType requestType, String content, String token) {
-        return FcmSendRequest.builder()
-                .requestType(requestType)
-                .id(0L)
-                .title("TriB")
-                .content(content)
-                .image(null)
-                .token(token)
-                .build();
+    private Set<Long> getUserBlockedUserIds(Long userId){
+        return new HashSet<>(userBlockRepository.findBlockedUserIdsByBlockerUserId(userId));
     }
 }

@@ -125,7 +125,10 @@ public class PostController {
             @RequestParam(defaultValue = "LATEST") PostSortType sortType,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") Integer page,
-            @RequestParam(defaultValue = "20") Integer size) {
+            @RequestParam(defaultValue = "20") Integer size,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long currentUserId = userPrincipal != null ? userPrincipal.getUserId() : null;
 
         TripSharePostFilterRequest filter = TripSharePostFilterRequest.builder()
                 .country(country)
@@ -133,6 +136,7 @@ public class PostController {
                 .keyword(keyword)
                 .page(page)
                 .size(size)
+                .currentUserId(currentUserId)
                 .build();
 
         List<PostSummaryResponse> response = postService.getTripSharePosts(filter);
@@ -147,7 +151,10 @@ public class PostController {
             @RequestParam(defaultValue = "LATEST") PostSortType sortType,
             @RequestParam(required = false) List<String> hashtags,
             @RequestParam(defaultValue = "0") Integer page,
-            @RequestParam(defaultValue = "20") Integer size) {
+            @RequestParam(defaultValue = "20") Integer size,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long currentUserId = userPrincipal != null ? userPrincipal.getUserId() : null;
 
         FreeBoardPostFilterRequest filter = FreeBoardPostFilterRequest.builder()
                 .keyword(keyword)
@@ -155,6 +162,7 @@ public class PostController {
                 .hashtags(hashtags)
                 .page(page)
                 .size(size)
+                .currentUserId(currentUserId)
                 .build();
 
         List<PostSummaryResponse> response = postService.getFreeBoardPosts(filter);
@@ -254,5 +262,29 @@ public class PostController {
         postService.deletePost(postId, userId);
 
         return ApiResponse.ok("게시글이 삭제되었습니다.", null);
+    }
+
+    @Operation(summary = "게시글 차단", description = "게시글을 차단합니다. 모든 사용자에게 보이지 않습니다.")
+    @PostMapping("/{postId}/block")
+    public ResponseEntity<ApiResponse<Void>> blockPost(
+            @PathVariable Long postId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long userId = userPrincipal.getUserId();
+        postService.blockPost(postId, userId);
+
+        return ApiResponse.ok("게시글을 차단했습니다.", null);
+    }
+
+    @Operation(summary = "게시글 차단 해제", description = "차단된 게시글의 차단을 해제합니다.")
+    @DeleteMapping("/{postId}/block")
+    public ResponseEntity<ApiResponse<Void>> unblockPost(
+            @PathVariable Long postId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long userId = userPrincipal.getUserId();
+        postService.unblockPost(postId, userId);
+
+        return ApiResponse.ok("게시글 차단을 해제했습니다.", null);
     }
 }

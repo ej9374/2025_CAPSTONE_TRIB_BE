@@ -53,6 +53,8 @@ public class PostService {
     private final MessageRepository messageRepository;
     private final HashtagService hashtagService;
     private final ScheduleService scheduleService;
+    private final triB.triB.global.utils.CheckBadWordsUtil checkBadWordsUtil;
+    private final PostBlockRepository postBlockRepository;
 
     /**
      * 일정 공유 게시글 작성 미리보기
@@ -106,7 +108,14 @@ public class PostService {
         // 4. Trip의 Room에서 room_name 가져오기
         String roomName = trip.getRoom().getRoomName();
 
-        // 5. Post 엔티티 생성 (제목은 room_name, content는 사용자 입력)
+        // 5. 욕설 검증
+        checkBadWordsUtil.validateNoBadWords(roomName);
+        checkBadWordsUtil.validateNoBadWords(request.getContent());
+        if (request.getTravelReview() != null) {
+            checkBadWordsUtil.validateNoBadWords(request.getTravelReview());
+        }
+
+        // 6. Post 엔티티 생성 (제목은 room_name, content는 사용자 입력)
         Post post = Post.builder()
                 .userId(userId)
                 .user(user)
@@ -170,7 +179,11 @@ public class PostService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        // 2. Post 엔티티 생성
+        // 2. 욕설 검증
+        checkBadWordsUtil.validateNoBadWords(request.getTitle());
+        checkBadWordsUtil.validateNoBadWords(request.getContent());
+
+        // 3. Post 엔티티 생성
         Post post = Post.builder()
                 .userId(userId)
                 .user(user)
@@ -371,5 +384,44 @@ public class PostService {
             m.setMessageStatus(MessageStatus.DELETE);
             messageRepository.save(m);
         });
+    }
+
+    /**
+     * 게시글 차단 (개인적 차단)
+     * - 모든 유저가 다른 사람의 게시글을 차단 가능
+     * - 차단한 유저에게만 안 보임
+     */
+    @Transactional
+    public void blockPost(Long postId, Long currentUserId) {
+        // 게시글 존재 확인
+        postRepository.findById(postId)
+                .orElseThrow(() -> new CustomException(ErrorCode.POST_NOT_FOUND));
+
+        // 이미 차단된 경우 무시
+        if (postBlockRepository.existsByIdBlockerUserIdAndIdBlockedPostId(currentUserId, postId)) {
+            return;
+        }
+
+        PostBlockId id = new PostBlockId(currentUserId, postId);
+        PostBlock postBlock = PostBlock.builder()
+                .id(id)
+                .build();
+        postBlockRepository.save(postBlock);
+    }
+
+    /**
+     * 게시글 차단 해제
+     */
+    @Transactional
+    public void unblockPost(Long postId, Long currentUserId) {
+        PostBlockId id = new PostBlockId(currentUserId, postId);
+        postBlockRepository.deleteById(id);
+    }
+
+    /**
+     * 특정 유저가 차단한 모든 게시글 ID 목록 조회
+     */
+    public List<Long> getBlockedPostIds(Long blockerUserId) {
+        return postBlockRepository.findBlockedPostIdsByBlockerUserId(blockerUserId);
     }
 }

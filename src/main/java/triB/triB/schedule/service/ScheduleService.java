@@ -100,6 +100,9 @@ public class ScheduleService {
                 .map(this::mapToScheduleItemResponse)
                 .collect(Collectors.toList());
 
+        // TravelMode 설정 (null이면 기본값 DRIVE)
+        TravelMode travelMode = trip.getTravelMode() != null ? trip.getTravelMode() : TravelMode.DRIVE;
+
         // TripScheduleResponse 생성 및 반환
         return TripScheduleResponse.builder()
                 .tripId(trip.getTripId())
@@ -108,6 +111,7 @@ public class ScheduleService {
                 .endDate(room.getEndDate())
                 .currentDay(targetDayNumber)
                 .schedules(scheduleItems)
+                .travelMode(travelMode)
                 .budget(trip.getBudget())
                 .build();
     }
@@ -139,6 +143,9 @@ public class ScheduleService {
                 .map(this::mapToScheduleItemWithLocationResponse)
                 .collect(Collectors.toList());
 
+        // TravelMode 설정 (null이면 기본값 DRIVE)
+        TravelMode travelMode = trip.getTravelMode() != null ? trip.getTravelMode() : TravelMode.DRIVE;
+
         // TripScheduleWithLocationResponse 생성 및 반환
         return TripScheduleWithLocationResponse.builder()
                 .tripId(trip.getTripId())
@@ -147,6 +154,7 @@ public class ScheduleService {
                 .endDate(room.getEndDate())
                 .currentDay(targetDayNumber)
                 .schedules(scheduleItems)
+                .travelMode(travelMode)
                 .budget(trip.getBudget())
                 .build();
     }
@@ -176,6 +184,9 @@ public class ScheduleService {
                 .map(this::mapToScheduleItemResponse)
                 .collect(Collectors.toList());
 
+        // TravelMode 설정 (null이면 기본값 DRIVE)
+        TravelMode travelMode = trip.getTravelMode() != null ? trip.getTravelMode() : TravelMode.DRIVE;
+
         // TripScheduleResponse 생성 및 반환
         return TripScheduleResponse.builder()
                 .tripId(trip.getTripId())
@@ -184,6 +195,7 @@ public class ScheduleService {
                 .endDate(room.getEndDate())
                 .currentDay(targetDayNumber)
                 .schedules(scheduleItems)
+                .travelMode(travelMode)
                 .budget(trip.getBudget())
                 .build();
     }

@@ -38,8 +38,12 @@ public class CommentController {
 
     @Operation(summary = "댓글 목록 조회", description = "게시글의 댓글 목록을 조회합니다. (대댓글 포함)")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<CommentResponse>>> getComments(@PathVariable Long postId) {
-        List<CommentResponse> response = commentService.getCommentsByPostId(postId);
+    public ResponseEntity<ApiResponse<List<CommentResponse>>> getComments(
+            @PathVariable Long postId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long currentUserId = userPrincipal != null ? userPrincipal.getUserId() : null;
+        List<CommentResponse> response = commentService.getCommentsByPostId(postId, currentUserId);
         return ApiResponse.ok("댓글 목록 조회 성공", response);
     }
 
@@ -54,5 +58,31 @@ public class CommentController {
         commentService.deleteComment(commentId, userId);
 
         return ApiResponse.ok("댓글이 삭제되었습니다.", null);
+    }
+
+    @Operation(summary = "댓글 차단", description = "댓글을 차단합니다. 모든 사용자에게 보이지 않습니다.")
+    @PostMapping("/{commentId}/block")
+    public ResponseEntity<ApiResponse<Void>> blockComment(
+            @PathVariable Long postId,
+            @PathVariable Long commentId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long userId = userPrincipal.getUserId();
+        commentService.blockComment(commentId, userId);
+
+        return ApiResponse.ok("댓글을 차단했습니다.", null);
+    }
+
+    @Operation(summary = "댓글 차단 해제", description = "차단된 댓글의 차단을 해제합니다.")
+    @DeleteMapping("/{commentId}/block")
+    public ResponseEntity<ApiResponse<Void>> unblockComment(
+            @PathVariable Long postId,
+            @PathVariable Long commentId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        Long userId = userPrincipal.getUserId();
+        commentService.unblockComment(commentId, userId);
+
+        return ApiResponse.ok("댓글 차단을 해제했습니다.", null);
     }
 }

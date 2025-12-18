@@ -113,6 +113,14 @@ public class AuthController {
         authService.sendPasswordToEmail(email);
         return ApiResponse.ok("임시 비밀번호를 이메일로 발급했습니다. 로그인 후 비밀번호를 변경해주세요.", null);
     }
+
+    @PostMapping("/apple/complete")
+    public ResponseEntity<ApiResponse<AuthResponse>> completeApple(
+            @RequestBody AppleCompleteRequest appleCompleteRequest
+    ){
+        AuthResponse response = authService.completeAppleSign(appleCompleteRequest.getRegisterToken());
+        return ApiResponse.created("소셜로그인 회원가입을 성공했습니다.", response);
+    }
 }
 
 

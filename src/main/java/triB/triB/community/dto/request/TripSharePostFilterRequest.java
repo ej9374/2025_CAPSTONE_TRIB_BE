@@ -27,4 +27,7 @@ public class TripSharePostFilterRequest {
 
     @Builder.Default
     private Integer size = 20;
+
+    // 현재 사용자 ID (차단 필터링용)
+    private Long currentUserId;
 }

@@ -160,7 +160,7 @@ public class StompInterceptor implements ChannelInterceptor {
             return message;
         } catch (Exception e) {
             log.error("STOMP 메시지 처리 중 에러 발생: {}", e.getMessage(), e);
-            return null;  // 메시지 처리 중단
+            throw e;
         }
     }
 

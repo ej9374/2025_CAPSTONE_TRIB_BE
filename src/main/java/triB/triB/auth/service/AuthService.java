@@ -28,6 +28,7 @@ import triB.triB.global.exception.ErrorCode;
 import triB.triB.global.infra.RedisClient;
 import triB.triB.global.infra.AwsS3Client;
 import triB.triB.global.security.JwtProvider;
+import triB.triB.global.utils.CheckBadWordsUtil;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -46,6 +47,7 @@ public class AuthService {
     private final AwsS3Client s3Client;
     private final JwtProvider jwtProvider;
     private final ObjectMapper objectMapper;
+    private final CheckBadWordsUtil checkBadWordsUtil;
     private static final String charPool = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final String passwordCharPool = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ?%!#*";
 
@@ -102,6 +104,10 @@ public class AuthService {
         String photoUrl = null;
         try {
             photoUrl = (photo != null && !photo.isEmpty()) ? s3Client.uploadFile(photo) : null;
+
+            checkBadWordsUtil.validateNoBadWords(authRequest.getNickname());
+            checkBadWordsUtil.validateNoBadWords(authRequest.getUsername());
+
             User user = User.builder()
                     .photoUrl(photoUrl)
                     .email(authRequest.getEmail())
@@ -121,7 +127,7 @@ public class AuthService {
 
     @Transactional
     public AuthResponse loginUser(String email, String password) {
-        log.info("로그인 시;");
+        log.info("로그인 시");
         User user = userRepository.findByEmail(email)
                 .orElseThrow(()->
                         new BadCredentialsException("이메일 또는 비밀번호가 올바르지 않습니다."));
@@ -160,6 +166,9 @@ public class AuthService {
             else if (image != null && !image.isEmpty())
                 photoUrl = image;
 
+            checkBadWordsUtil.validateNoBadWords(registerRequest.getNickname());
+            checkBadWordsUtil.validateNoBadWords(registerRequest.getUsername());
+
             User user = User.builder()
                     .photoUrl(photoUrl)
                     .email(null)
@@ -176,6 +185,9 @@ public class AuthService {
                     .refreshToken(refreshToken)
                     .build();
             oauthAccountRepository.save(account);
+
+            redisClient.deletePendingSignup(provider, providerId);
+
             return user.getUserId();
         } catch (DataIntegrityViolationException e ){
             // 회원가입 실패시 S3에 올라간 사진 삭제로 무결성 유지
@@ -248,5 +260,38 @@ public class AuthService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("임시 비밀번호 생성을 실패했습니다.");
         }
+    }
+
+    public AuthResponse completeAppleSign(String registerToken) {
+        String provider = jwtProvider.getProviderFromRegisterToken(registerToken);
+        String providerId = jwtProvider.getProviderUserIdFromRegisterToken(registerToken);
+        String username = jwtProvider.getUsernameFromRegisterToken(registerToken);
+        String nickname = jwtProvider.getNicknameFromRegisterToken(registerToken);
+        String appleRefreshToken = jwtProvider.getAppleRefreshTokenFromRegisterToken(registerToken);
+
+        User user = User.builder()
+                .email(null)
+                .password(null)
+                .nickname(nickname)
+                .username(username)
+                .photoUrl(null)
+                .build();
+        userRepository.save(user);
+
+        OauthAccount account = OauthAccount.builder()
+                .user(user)
+                .provider(provider)
+                .providerUserId(providerId)
+                .refreshToken(appleRefreshToken)
+                .build();
+        oauthAccountRepository.save(account);
+
+        // 회원가입 완료했으므로 pending 데이터 삭제
+        redisClient.deletePendingSignup(provider, providerId);
+        log.info("애플 회원가입 완료. pending 데이터 삭제. providerId: {}", providerId);
+
+        String accessToken = jwtProvider.generateAccessToken(user.getUserId());
+        String refreshToken = jwtProvider.generateRefreshToken(user.getUserId());
+        return new AuthResponse(user.getUserId(), accessToken, refreshToken);
     }
 }

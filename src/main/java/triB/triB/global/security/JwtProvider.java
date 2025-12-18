@@ -49,7 +49,7 @@ public class JwtProvider {
         this.refreshKey = Keys.hmacShaKeyFor(refreshKeyBytes);
     }
 
-    public String generateRegisterToken(String provider, String providerUserId, String photoUrl, String nickname) {
+    public String generateRegisterToken(String provider, String providerUserId, String photoUrl, String nickname, String username, String appleRefreshToken) {
         Date now = new Date();
         Date expires = new Date(now.getTime() + 5 * 60 * 1000);
 
@@ -60,6 +60,8 @@ public class JwtProvider {
                 .claim("providerUserId", providerUserId)
                 .claim("photoUrl", photoUrl)
                 .claim("nickname", nickname)
+                .claim("username", username)
+                .claim("appleRefreshToken", appleRefreshToken)
                 .issuedAt(now)
                 .expiration(expires)
                 .signWith(accessKey)
@@ -80,6 +82,14 @@ public class JwtProvider {
 
     public String getNicknameFromRegisterToken(String Token){
         return tokenParser(Token).get("nickname", String.class);
+    }
+
+    public String getUsernameFromRegisterToken(String Token){
+        return tokenParser(Token).get("username", String.class);
+    }
+
+    public String getAppleRefreshTokenFromRegisterToken(String Token){
+        return tokenParser(Token).get("appleRefreshToken", String.class);
     }
 
     private Claims tokenParser(String token) {

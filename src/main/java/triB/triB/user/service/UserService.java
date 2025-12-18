@@ -3,6 +3,7 @@ package triB.triB.user.service;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.coyote.BadRequestException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,6 +23,7 @@ import triB.triB.auth.repository.UserRepository;
 import triB.triB.auth.security.AppleClientSecretGenerator;
 import triB.triB.global.infra.AwsS3Client;
 import triB.triB.global.infra.RedisClient;
+import triB.triB.global.utils.CheckBadWordsUtil;
 import triB.triB.user.dto.MyProfile;
 import triB.triB.user.dto.UpdateProfileRequest;
 
@@ -43,6 +45,7 @@ public class UserService {
     private final TokenRepository tokenRepository;
     private final OauthAccountRepository oauthAccountRepository;
     private final AppleClientSecretGenerator clientSecretGenerator;
+    private final CheckBadWordsUtil checkBadWordsUtil;
     private final @Qualifier("kakaoWebClient") WebClient kakaoWebClient;
     private final @Qualifier("appleWebClient") WebClient appleWebClient;
 
@@ -74,6 +77,7 @@ public class UserService {
             }
             String nickname = updateProfileRequest.getNickname();
             if (nickname != null && !nickname.isEmpty()) {
+                checkBadWordsUtil.validateNoBadWords(nickname);
                 log.info("userId = {} 의 닉네임을 변경합니다.", userId);
                 user.setNickname(nickname);
             }
@@ -106,6 +110,10 @@ public class UserService {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(()-> new EntityNotFoundException("해당 유저가 존재하지 않습니다."));
+
+        if (oauthAccountRepository.findByUser_UserId(userId) != null) {
+            throw new RuntimeException("소셜 로그인으로 가입한 유저입니다.");
+        }
 
         if (!passwordEncoder.matches(password, user.getPassword())){
             throw new BadCredentialsException("비밀번호가 올바르지 않습니다.");

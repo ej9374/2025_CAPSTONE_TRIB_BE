@@ -37,8 +37,21 @@ public enum ErrorCode {
     ROUTES_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ROUTES_API_ERROR", "경로 계산 중 오류가 발생했습니다."),
 
     INVALID_ACCESS(HttpStatus.INTERNAL_SERVER_ERROR, "INVALID_ACCESS", "탈퇴한 유저는 접근할 수 없습니다."),
-    MESSAGE_DELETED(HttpStatus.BAD_REQUEST, "MESSAGE_DELETED", "삭제된 메세지엔 답장할 수 없습니다.")
+    MESSAGE_DELETED(HttpStatus.BAD_REQUEST, "MESSAGE_DELETED", "삭제된 메세지엔 답장할 수 없습니다."),
+
+    USE_BAD_WORDS(HttpStatus.BAD_REQUEST, "USE_BAD_WORDS", "부적절한 언어는 작성이 불가능합니다."),
+
+    // 차단 관련 에러
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
+    CANNOT_BLOCK_YOURSELF(HttpStatus.BAD_REQUEST, "CANNOT_BLOCK_YOURSELF", "자기 자신을 차단할 수 없습니다."),
+    USER_BLOCKED(HttpStatus.FORBIDDEN, "USER_BLOCKED", "차단된 사용자의 게시글입니다."),
+    POST_BLOCKED(HttpStatus.FORBIDDEN, "POST_BLOCKED", "차단된 게시글입니다."),
+    COMMENT_BLOCKED(HttpStatus.FORBIDDEN, "COMMENT_BLOCKED", "차단된 댓글입니다."),
+    REQUEST_TO_BLOCKER(HttpStatus.FORBIDDEN, "REQUEST_TO_BLOCKER", "차단당한 유저에게 친구 신청을 보낼 수 없습니다."),
+    REQUEST_TO_BLOCKED_USER(HttpStatus.FORBIDDEN, "REQUEST_TO_BLOCKED_USER", "차단한 유저입니다."),
+    INVITE_BLOCKED(HttpStatus.FORBIDDEN, "INVITE_BLOCKED", "차단한 유저는 채팅방에 초대할 수 없습니다.")
     ;
+
 
     private final HttpStatus httpStatus;
     private final String code;

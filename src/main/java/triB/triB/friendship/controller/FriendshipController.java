@@ -60,7 +60,7 @@ public class FriendshipController {
     public ResponseEntity<ApiResponse<Void>> requestFriendship(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable(name = "userId") Long userId2
-    ) throws FirebaseMessagingException {
+    ) {
         Long userId1 =  userPrincipal.getUserId();
         friendshipService.requestFriendshipToUser(userId1, userId2);
         return ApiResponse.created("친구 요청을 보냈습니다.", null);

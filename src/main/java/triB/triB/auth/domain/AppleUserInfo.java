@@ -22,13 +22,29 @@ public class AppleUserInfo implements OAuth2UserInfo {
     @Override
     public String getNickname() {
         if (attributes.containsKey("name")) {
-            return (String) attributes.get("name");
+            Object nameObj = attributes.get("name");
+            if (nameObj instanceof Map) {
+                Map<String, Object> nameMap = (Map<String, Object>) nameObj;
+                String lastName = (String) nameMap.getOrDefault("lastName", "");
+                String firstName = (String) nameMap.getOrDefault("firstName", "");
+                return lastName + firstName;
+            }
+            return (String) nameObj;
         }
-        return null;
+        String email = (String) attributes.get("email");
+        if (email != null && email.contains("@")) {
+            return email.split("@")[0];
+        }
+        return "apple user";
     }
 
     @Override
     public String getProfileImageUrl() {
         return null;
+    }
+
+    @Override
+    public String getEmail() {
+        return (String) attributes.get("email");
     }
 }
