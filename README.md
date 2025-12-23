@@ -35,6 +35,7 @@
 ## 아키텍처 구조
 <img width="1316" height="898" alt="Image" src="https://github.com/user-attachments/assets/0752face-6e52-4ec7-9481-0f5c9425e557" />
 **모놀로식 아키텍처**
+<br/>
 AI 모델 추론 부하를 분리하기 위해 별도의 서버를 구성하고 Internal API로 통신
 
 ## 🛠️ Tech Stack
