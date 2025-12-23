@@ -9,11 +9,33 @@
 - 효율적 동선 설계: 단순한 장소 나열이 아닌, 지도 상 이동 시간을 최소화하는 동선 제시
 - 부가 기능 연계: 생성된 일정은 지도 위에 시각화되며 길찾기, 예산 관리, 커뮤니티 공유 기능과 유기적으로 연결
 
+## 나의 역할 및 구현 내용
+### 사용자 인증 및 회원 관리
+- OAuth 2.0 소셜 로그인
+- Redis TTL 이용한 이메일 인증 및 OTT(One Time Ticket) 방식의 보안 아키텍처 설계
+- Spring Security 기반 인증/인가 처리
+
+### 친구 관리
+- 사용자 ID 기반 친구 요청 및 수락 관리 로직
+- FCM(Firebase Cloud Messaging) 연동을 통한 친구 요청 및 수락 푸시 알림 방솔
+- ApplicationEventPublisher를 이용한 이벤트 기반 알림 시스템 설계
+
+### 실시간 채팅
+- WebSocket(STOMP) 기반의 1:1 및 1:N 실시간 채팅 구현
+- AI 모델 통신 시 발생할 수 있는 장애 전파 차단을 위한 스레드 풀 격리 및 비동기 처리
+- Redis 분산 락을 활용하여 다중 사용자의 일정 생성 시 데이터 무결성 보장
+- 모델 요청/응답 구조에 최적화된 데이터 저장 및 Batch Fetching을 통한 성능 개선
+
+### DevOps
+- GitHub Actions 이용한 CI/CD 파이프라인 구축 및 배포 자동화
+- Docker 기반의 애플리케이션 컨테이너화 및 관리
+- AWS ACM을 이용한 SSL/TLS 보안 인증서 적용 및 HTTPS 통신 환경 구축
+- AWS ALB(Application Load Balancer)를 통한 트래픽 분산 가용성 확보
 
 ## 아키텍처 구조
 <img width="1316" height="898" alt="Image" src="https://github.com/user-attachments/assets/0752face-6e52-4ec7-9481-0f5c9425e557" />
 **모놀로식 아키텍처**
-> AI 모델 추론 부하를 분리하기 위해 별도의 서버를 구성하고 Internal API로 통신
+AI 모델 추론 부하를 분리하기 위해 별도의 서버를 구성하고 Internal API로 통신
 
 ## 🛠️ Tech Stack
 - **Backend:** Java, Spring Boot, JPA
